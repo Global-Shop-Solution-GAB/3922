@@ -1,0 +1,242 @@
+Program.Sub.ScreenSU.Start
+gui.SS_Form1..create
+gui.SS_Form1..caption("Release Jobs")
+gui.SS_Form1..size(2640,1740)
+gui.SS_Form1..minx(0)
+gui.SS_Form1..miny(0)
+gui.SS_Form1..position(0,0)
+gui.SS_Form1..event(unload,Unload)
+gui.SS_Form1..alwaysontop(False)
+gui.SS_Form1..fontname("Arial")
+gui.SS_Form1..fontsize(8)
+gui.SS_Form1..forecolor(0)
+gui.SS_Form1..fontstyle(,,,,)
+gui.SS_Form1..BackColor(-2147483633)
+gui.SS_Form1..controlbox(True)
+gui.SS_Form1..maxbutton(False)
+gui.SS_Form1..minbutton(False)
+gui.SS_Form1..mousepointer(0)
+gui.SS_Form1..moveable(True)
+gui.SS_Form1..sizeable(False)
+gui.SS_Form1..ShowInTaskBar(True)
+gui.SS_Form1..titlebar(True)
+gui.SS_Form1.lbl_dtpEndDate.create(label,"End Date Labor Cutoff",True,1800,200,1,100,135,True,0,Arial,8,-2147483633,0)
+gui.SS_Form1.lbl_dtpEndDate.defaultvalue("")
+gui.SS_Form1.lbl_dtpEndDate.controlgroup(0)
+gui.SS_Form1.dtpEndDate.create(datepicker)
+gui.SS_Form1.dtpEndDate.visible(True)
+gui.SS_Form1.dtpEndDate.size(2055,345)
+gui.SS_Form1.dtpEndDate.zorder(0)
+gui.SS_Form1.dtpEndDate.position(100,335)
+gui.SS_Form1.dtpEndDate.enabled(True)
+gui.SS_Form1.dtpEndDate.checkbox(False)
+gui.SS_Form1.dtpEndDate.defaultvalue("")
+gui.SS_Form1.dtpEndDate.controlgroup(0)
+gui.SS_Form1.cmdRun.create(button)
+gui.SS_Form1.cmdRun.caption("Run")
+gui.SS_Form1.cmdRun.visible(True)
+gui.SS_Form1.cmdRun.size(1000,360)
+gui.SS_Form1.cmdRun.zorder(0)
+gui.SS_Form1.cmdRun.position(100,765)
+gui.SS_Form1.cmdRun.enabled(True)
+gui.SS_Form1.cmdRun.fontname("Arial")
+gui.SS_Form1.cmdRun.fontsize(8)
+gui.SS_Form1.cmdRun.event(click,cmdrun_click)
+gui.SS_Form1.cmdRun.defaultvalue("")
+gui.SS_Form1.cmdRun.controlgroup(0)
+
+
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.UDT.uBI.Define("BIRUNID",String,BIRUNID)
+Variable.UDT.uBI.Define("JOB_Suffix",String,Job_Suffix)
+Variable.UDT.uBI.Define("Part",String,Part)
+Variable.UDT.uBI.Define("Part_Desc",String,Part_DESC)
+Variable.UDT.uBI.Define("Print_Flag",String,Print_Flag)
+Variable.UDT.uBI.Define("Labor_Sequence",String,Labor_Sequence)
+Variable.UDT.uBI.Define("Date_Start",Date,Date_Start)
+Variable.uGlobal.uBI.Declare("uBI")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Quote 5418
+'for Flex TX Inc (formerly RO-Banks)
+'coded by TRT
+'Feb 10,  2014
+
+'ran from custom menu item
+'This GAB program will allow and end date to be entered and will release jobs to the floor only if the first
+'lkabor sequence Job_header.date_start is on or before this end date.
+
+V.Local.bF.Declare(Boolean)
+
+
+F.ODBC.Connection!conX.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+F.ODBC.Connection!conX.TableExists("GCG_3922_BI_WO_Relse",V.Local.bF)
+F.Intrinsic.Control.If(V.Local.bF,=,True)
+	'clear out our BI table, GCG_BI_WO_Release
+	F.ODBC.Connection!conX.Execute("Delete From GCG_3922_BI_WO_Relse")
+	V.uGlobal.uBI.Redim(-1,-1)
+	'show our screen looking for information
+	Gui.SS_Form1..Show
+F.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+'close wait dialog
+F.Intrinsic.UI.CloseWaitDialog
+
+'close connection
+F.ODBC.Connection!conX.Close
+
+'end program
+F.Intrinsic.Control.End
+
+Program.Sub.Unload.End
+
+program.sub.cmdrun_click.start
+F.Intrinsic.Control.SetErrorHandler("cmdrun_click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.dEnd.Declare(Date)
+V.Local.sQuery.Declare(String)
+V.Local.sJob.Declare(String)
+V.Local.sFlag.Declare(String)
+V.Local.sUpdate.Declare(String)
+V.Local.iUB.Declare(Long)
+V.local.iBIRunID.Declare(Long)
+V.Local.iBILogID.Declare(Long)
+
+Gui.SS_Form1..Visible(False)
+
+F.Intrinsic.UI.InvokeWaitDialog("Processing records...","Please Wait...")
+'
+'get our end date from the screen
+V.Local.dEnd.Set(V.Screen.SS_Form1!dtpEndDate.Value)
+
+F.Global.BI.GetRunID(V.Local.iBIRunID)
+F.Global.BI.StartLogging(V.Local.iBIRunID,-1,-1,"",V.Local.iBILogID)
+
+'First select our jobs that have not yet been release
+'flag_wo_PRTD will either be blank, or y, or n???
+F.Intrinsic.String.Build("Select Job,Suffix,Flag_WO_PRTD, Part, Description From V_Job_Header Where Date_Closed = '1900-01-01' And  Flag_WO_PRTD = '{0}' OR Flag_WO_PRTD = '{1}' OR Flag_WO_PRTD = '{2}'","","Y","N",V.Local.sQuery)
+'open in read write mode cause we are going to update that record... if one has found to be needing relesae....
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",V.Local.sQuery)
+F.Intrinsic.Control.DoUntil(V.ODBC.conX!rst.EOF,=,True)
+	F.Intrinsic.String.Build("Select Top 1(Seq) As Seq, Date_Start, Flag_Closed From V_JOB_OPERATIONS WHERE LMO = 'L' AND Job = '{0}' AND Suffix = '{1}' AND Date_Start <= '{2}' And Seq < '995000' Order By Seq",V.ODBC.conX!rst.FieldValTrim!Job,V.ODBC.conX!rst.FieldValTrim!Suffix,V.Local.dEnd.PervasiveDate,V.Local.sQuery)
+	F.ODBC.Connection!conX.OpenLocalRecordsetRO("rstOp",V.Local.sQuery)
+	F.Intrinsic.Control.If(V.ODBC.conX!rstOp.EOF,<>,True)
+		'the first record that we will have is the top labor sequence, or first labor sequence. If the Flag is Closed we are going to ignore it, or we are going to release it.
+		F.Intrinsic.Control.If(V.ODBC.conX!rstOp.FieldValTrim!Flag_Closed,<>,"Y")
+			'means we have a job that has not been released, and the first labor sequence on the job falls before the end date entered on the screen, we know that this is on we are going to update the flag and release it.
+			F.Intrinsic.Control.If(V.ODBC.conX!rst.FieldValTrim!Flag_WO_Prtd,=,"Y")
+				'we know its been printed so lets releas it
+				V.Local.sflag.Set("R")
+			F.Intrinsic.Control.Else
+				'we know that is either blank or N so we are going to release that job with an x...
+				V.Local.sFlag.Set("X")
+			F.Intrinsic.Control.EndIf
+			'add our information to udt.
+			F.Intrinsic.Math.Add(V.uGlobal.uBI.UBound,1,V.Local.iUB)
+			F.Intrinsic.Control.If(V.local.iUB,=,0)
+				V.uGlobal.uBI.Redim(0,0)
+			F.Intrinsic.Control.Else
+				V.uGlobal.uBI.RedimPreserve(0,V.Local.iUB)
+			F.Intrinsic.Control.Endif
+			'set our job-suffix concate,part, dec,flag,labor seq,date start
+			F.Intrinsic.Control.If(V.ODBC.conX!rst.FieldValTrim!Suffix,=,"")
+				V.Local.sJob.Set(V.ODBC.conX!rst.FieldValTrim!job)
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("{0}-{1}",V.ODBC.conX!rst.FieldValTrim!Job,V.ODBC.conX!rst.FieldValTrim!Suffix,V.Local.sJob)
+			F.Intrinsic.Control.EndIf
+
+			V.uGlobal.uBI(v.Local.iUB)!JOB_Suffix.Set(V.Local.sJob)
+			V.uGlobal.uBI(v.Local.iUB)!Part.Set(V.ODBC.conX!rst.FieldValTrim!Part)
+			V.uGlobal.uBI(v.local.iub)!Part_Desc.Set(V.ODBC.conX!rst.fieldvaltrim!Description)
+			V.uGlobal.uBI(v.local.iUB)!Print_Flag.Set(V.Local.sFlag)
+			V.uGlobal.uBI(v.Local.iUB)!Labor_Sequence.Set(V.ODBC.conX!rstOp.FieldValTrim!Seq)
+			V.uGlobal.uBI(v.Local.iUB)!Date_Start.Set(V.ODBC.conX!rstOp.FieldValPervasiveDate!Date_Start)
+			'update the release flag on our Job_Header against the job.
+			F.Intrinsic.String.Build("Update Job_Header Set Flag_WO_PRTD= '{0}' Where Job = '{1}' AND Suffix = '{2}'",V.Local.sFlag,V.ODBC.conX!rst.FieldValTrim!Job,V.ODBC.conX!rst.fieldvalTrim!Suffix,V.Local.sQuery)
+			F.ODBC.Connection!conX.Execute(V.Local.sQuery)
+		F.Intrinsic.Control.endif
+	F.Intrinsic.Control.EndIf
+	F.ODBC.conX!rstOp.Close
+	F.ODBC.conX!rst.MoveNext
+F.Intrinsic.Control.Loop
+
+'set our run id to our udt.
+F.Intrinsic.Variable.UDTSetMemberValue(V.uGlobal.uBI!BIRUNID,V.Local.iBIRunID)
+
+
+F.Intrinsic.Control.CallSub(Print_bi,"Run",V.Local.iBIRunID,"Log",V.Local.iBILogID)
+
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.Label("cmdrun_click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3922_Release_Jobs.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+program.sub.cmdrun_click.end
+
+Program.Sub.Print_BI.Start
+F.Intrinsic.Control.SetErrorHandler("Print_BI_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.iBIRunID.Declare(Long)
+V.Local.iBILogID.Declare(Long)
+V.Local.iRet.Declare(Long)
+
+V.Local.iBIRunID.Set(V.Args.Run)
+V.Local.iBILogID.Set(V.Args.Log)
+
+F.Intrinsic.Control.If(V.uGlobal.uBI.UBound,=,-1)
+	F.Global.BI.StopLogging(V.Local.iBILogID)
+	F.Intrinsic.UI.Msgbox("No Jobs available to release.")
+	F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.Else
+	
+	F.ODBC.Connection!conX.OpenLocalRecordsetRW("rst","Select * From GCG_3922_BI_WO_Relse")
+	F.Intrinsic.Variable.SaveUDTtoRecordset("conX","rst","v.uglobal.uBI")
+	F.ODBC.conX!rst.Close
+
+	F.Global.BI.StopLogging(V.Local.iBILogID)
+
+	F.Intrinsic.UI.CloseWaitDialog
+
+	F.Global.BI.RunReportPreProcessor(V.Local.iBIRunID,V.Local.iBILogid,"","","",-1,True,"",-1,"",-1,"","",V.local.iRet)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Print_BI_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3922_Release_Jobs.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Print_BI.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_Release_Jobs$}$TRT$}$2/10/2014
+Program.Sub.Comments.End
+Program.Sub.ScreenSS.Start
+SS_Form1{{CAPTION::Release Jobs by 1st Labor Start Date
+SS_Form1.CTRL{{NAME::dtpEndDate\\TYPE::6\\CAPTION::End Date\\GROUP::-1\\BROWSER::0\\SIZE::1
+SS_Form1.CTRL{{NAME::cmdRun\\TYPE::5\\CAPTION::Run\\GROUP::-1\\BROWSER::0\\SIZE::1
+
+Program.Sub.ScreenSS.End
+
